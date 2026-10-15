@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1311">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SF Swing">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Square Face Swing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout : écran de téléphone d'abord (scène vidéo, timeline, transport, réglages en dessous) ;
+   sur grand écran, les réglages passent dans une colonne à droite. Thème sombre assumé (analyse vidéo). */
+:root{
+  --bg:#0d1311; --surface:#141c19; --raised:#1c2622; --line:#28352f; --fg:#e6eee9; --muted:#8d9d96;
+  --user:#5aa2ff; --pro:#4fe08f; --flag:#f5c84b; --warn:#ff8a5c;
+  --display:'Barlow Condensed','Arial Narrow',system-ui,sans-serif;
+  --body:'Barlow',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{font:15px/1.45 var(--body);padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);-webkit-tap-highlight-color:transparent}
+button,select,input{font:inherit;color:inherit}
+[hidden]{display:none!important}
+.wrap{max-width:1280px;margin:0 auto;padding-inline:16px;padding-block:0 32px}
+
+.bar{display:flex;align-items:center;gap:12px;padding-block:14px;border-bottom:1px solid var(--line);margin-bottom:14px}
+.mark{width:34px;height:34px;flex:none;border-radius:8px}
+.brand h1{font:700 1.55rem/1 var(--display);letter-spacing:.02em;margin:0;text-transform:uppercase}
+.brand p{margin:2px 0 0;color:var(--muted);font-size:.8rem}
+.bar .sp{flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--raised);border-radius:8px;padding:8px 12px;cursor:pointer;min-height:38px;white-space:nowrap}
+.btn:hover{border-color:#3a4a43}
+.btn:focus-visible,.icon:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--flag);outline-offset:2px}
+.btn.primary{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:600}
+.btn[disabled]{opacity:.4;cursor:default}
+
+.app{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
+@media (min-width:980px){.app{grid-template-columns:minmax(0,1fr) 340px;align-items:start}.panel{position:sticky;top:12px}}
+
+.sources{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.src{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface);display:flex;flex-direction:column;gap:6px;min-width:0}
+.src .lab{display:flex;align-items:center;gap:8px;font:600 .95rem/1 var(--display);letter-spacing:.06em;text-transform:uppercase}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.src.user .dot{background:var(--user)} .src.ref .dot{background:var(--pro)}
+.src .name{color:var(--muted);font-size:.82rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.src .row{display:flex;gap:8px;align-items:center}
+.src label.btn{font-size:.85rem;padding:6px 10px;min-height:34px}
+.prog{height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.prog i{display:block;height:100%;width:0;background:var(--flag);transition:width .15s}
+
+.notice{border:1px dashed #3a4a43;border-radius:8px;padding:8px 12px;color:var(--muted);font-size:.85rem;margin-bottom:12px}
+.notice b{color:var(--fg);font-weight:600}
+.notice.err{border-color:var(--warn);color:var(--fg)}
+
+.stage{position:relative;display:flex;justify-content:center;background:#080c0b;border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+canvas#cv{display:block;touch-action:none}
+.hud{position:absolute;left:10px;top:10px;display:flex;gap:6px;flex-wrap:wrap;pointer-events:none}
+.chip{font:500 .75rem/1 var(--mono);padding:5px 7px;border-radius:6px;background:rgba(8,12,11,.72);border:1px solid rgba(255,255,255,.08);font-variant-numeric:tabular-nums}
+.chip.u{color:var(--user)} .chip.p{color:var(--pro)} .chip.ph{color:var(--flag);text-transform:uppercase;letter-spacing:.06em}
+
+.timeline{position:relative;margin-top:14px;padding-top:18px}
+.marks{position:absolute;left:10px;right:10px;top:0;height:18px;pointer-events:none}
+.mk{position:absolute;transform:translateX(-50%);font:600 .7rem/1 var(--mono);color:var(--bg);background:var(--flag);border-radius:3px;padding:2px 4px}
+.mk::after{content:"";position:absolute;left:50%;top:100%;width:1px;height:10px;background:var(--flag)}
+input[type=range]{width:100%;accent-color:var(--flag);margin:0}
+#scrub{height:28px}
+
+.transport{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
+.icon{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--raised);display:grid;place-items:center;cursor:pointer;padding:0}
+.icon svg{width:20px;height:20px;fill:var(--fg)}
+.icon.play{width:56px;background:var(--fg);border-color:var(--fg)} .icon.play svg{fill:var(--bg)}
+.jumps{display:flex;gap:6px;margin-left:auto}
+.jumps .btn{min-height:44px;font:600 .85rem/1 var(--display);letter-spacing:.06em;text-transform:uppercase}
+select{background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:0 10px;height:44px}
+
+.panel{display:flex;flex-direction:column;gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.card h2{font:600 1.05rem/1 var(--display);letter-spacing:.08em;text-transform:uppercase;margin:0 0 12px;color:var(--muted)}
+.field{display:grid;grid-template-columns:84px minmax(0,1fr) 46px;align-items:center;gap:10px;margin-bottom:10px}
+.field span{font-size:.85rem;color:var(--muted)} .field output{font:500 .8rem var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.toggles{display:flex;flex-wrap:wrap;gap:6px}
+.tg{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:6px 11px;cursor:pointer;font-size:.85rem;user-select:none}
+.tg input{accent-color:var(--flag);margin:0}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-bottom:12px}
+.seg button{border:0;background:transparent;padding:8px 4px;cursor:pointer;font-size:.82rem;color:var(--muted)}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed=true]{background:var(--raised);color:var(--fg);font-weight:600}
+.row2{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{font:600 .72rem var(--body);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:right;padding:4px 0 6px}
+th:first-child,td:first-child{text-align:left}
+td{padding:6px 0;border-top:1px solid var(--line);text-align:right;font:500 .82rem var(--mono);font-variant-numeric:tabular-nums}
+td:first-child{font:500 .85rem var(--body)}
+td.u{color:var(--user)} td.p{color:var(--pro)} td.hot{color:var(--warn)}
+.hint{color:var(--muted);font-size:.8rem;margin:8px 0 0}
+.keyset{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.keyset .btn{font-size:.82rem;padding:6px 10px;min-height:34px}
+.tips{margin:0;padding-left:18px;color:var(--muted);font-size:.85rem} .tips li{margin-bottom:4px}
+.vids{position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;left:0;top:0}
+@media (prefers-reduced-motion:reduce){.prog i{transition:none}}
+@media (max-width:420px){.jumps{margin-left:0;width:100%}.jumps .btn{flex:1}.field{grid-template-columns:72px minmax(0,1fr) 42px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <img class="mark" src="icon-192.png" alt="" width="34" height="34">
+    <div class="brand"><h1>Square Face Swing</h1><p>Analyse sur ton téléphone, aucune vidéo envoyée</p></div>
+    <div class="sp"></div>
+    <button class="btn" id="demoBtn" type="button">Démo</button>
+  </header>
+
+  <div class="app">
+    <section>
+      <div class="sources">
+        <div class="src user">
+          <div class="lab"><span class="dot"></span>Mon swing</div>
+          <div class="name" id="nameU">Aucune vidéo</div>
+          <div class="prog" id="progU" hidden><i></i></div>
+          <div class="row"><label class="btn">Importer<input type="file" id="fileU" accept="video/*" hidden></label></div>
+        </div>
+        <div class="src ref">
+          <div class="lab"><span class="dot"></span>Référence</div>
+          <div class="name" id="nameR">Aucune vidéo</div>
+          <div class="prog" id="progR" hidden><i></i></div>
+          <div class="row"><label class="btn">Importer<input type="file" id="fileR" accept="video/*" hidden></label></div>
+        </div>
+      </div>
+
+      <div class="notice" id="notice"></div>
+
+      <div class="stage" id="stage">
+        <canvas id="cv" aria-label="Superposition des deux swings"></canvas>
+        <div class="hud"><span class="chip ph" id="hudPhase">Adresse</span><span class="chip u" id="hudU">Moi 0,00 s</span><span class="chip p" id="hudR">Réf 0,00 s</span></div>
+      </div>
+
+      <div class="timeline">
+        <div class="marks" id="marks"></div>
+        <input type="range" id="scrub" min="0" max="1" step="0.0001" value="0" aria-label="Position dans le swing">
+      </div>
+
+      <div class="transport">
+        <button class="icon" id="bStart" type="button" aria-label="Revenir au début"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+        <button class="icon" id="bPrev" type="button" aria-label="Image précédente"><svg viewBox="0 0 24 24"><path d="M16 5v14L6 12z"/></svg></button>
+        <button class="icon play" id="bPlay" type="button" aria-label="Lecture"><svg viewBox="0 0 24 24" id="playIco"><path d="M7 5v14l12-7z"/></svg></button>
+        <button class="icon" id="bNext" type="button" aria-label="Image suivante"><svg viewBox="0 0 24 24"><path d="M8 5v14l10-7z"/></svg></button>
+        <select id="speed" aria-label="Vitesse de lecture">
+          <option value="1">× 1</option><option value="0.5" selected>× 0,5</option><option value="0.25">× 0,25</option><option value="0.1">× 0,1</option>
+        </select>
+        <div class="jumps">
+          <button class="btn" type="button" data-jump="address">Adresse</button>
+          <button class="btn" type="button" data-jump="top">Top</button>
+          <button class="btn" type="button" data-jump="impact">Impact</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="card">
+        <h2>Superposition</h2>
+        <div class="field"><span>Fantôme</span><input type="range" id="opacity" min="0" max="1" step="0.01" value="0.35"><output id="opacityOut">35 %</output></div>
+        <div class="toggles">
+          <label class="tg"><input type="checkbox" id="tGhost" checked>Vidéo fantôme</label>
+          <label class="tg"><input type="checkbox" id="tSkU" checked><span class="dot" style="background:var(--user)"></span>Mon squelette</label>
+          <label class="tg"><input type="checkbox" id="tSkR" checked><span class="dot" style="background:var(--pro)"></span>Squelette réf.</label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Calage de la référence</h2>
+        <div class="row2"><button class="btn" type="button" id="autoAlign">Caler sur mon corps</button><label class="tg"><input type="checkbox" id="mirror">Miroir</label></div>
+        <div class="field"><span>Taille</span><input type="range" id="aS" min="0.3" max="3" step="0.01" value="1"><output id="aSOut">1,00</output></div>
+        <div class="field"><span>Gauche/droite</span><input type="range" id="aX" min="-0.6" max="0.6" step="0.005" value="0"><output id="aXOut">0</output></div>
+        <div class="field"><span>Haut/bas</span><input type="range" id="aY" min="-0.6" max="0.6" step="0.005" value="0"><output id="aYOut">0</output></div>
+        <p class="hint">« Caler » aligne les hanches et la taille des deux golfeurs à l'adresse. Active Miroir si la référence est gauchère ou filmée de l'autre côté.</p>
+      </div>
+
+      <div class="card">
+        <h2>Synchronisation</h2>
+        <div class="seg" id="syncSeg">
+          <button type="button" data-sync="keys" aria-pressed="true">3 repères</button>
+          <button type="button" data-sync="impact" aria-pressed="false">Impact seul</button>
+          <button type="button" data-sync="start" aria-pressed="false">Début</button>
+        </div>
+        <table>
+          <thead><tr><th>Repère</th><th>Moi</th><th>Réf.</th></tr></thead>
+          <tbody id="keyTable"></tbody>
+        </table>
+        <p class="hint" id="tempo"></p>
+        <h2 style="margin-top:14px">Corriger les repères</h2>
+        <div class="seg" id="viewSeg">
+          <button type="button" data-view="compare" aria-pressed="true">Comparer</button>
+          <button type="button" data-view="user" aria-pressed="false">Mon swing</button>
+          <button type="button" data-view="ref" aria-pressed="false">Référence</button>
+        </div>
+        <div id="keyEdit" hidden>
+          <p class="hint" style="margin-top:0">Avance image par image, puis place le repère sur l'image affichée.</p>
+          <div class="keyset">
+            <button class="btn" type="button" data-set="address">Adresse ici</button>
+            <button class="btn" type="button" data-set="top">Top ici</button>
+            <button class="btn" type="button" data-set="impact">Impact ici</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Mesures sur cette image</h2>
+        <table>
+          <thead><tr><th>Angle</th><th>Moi</th><th>Réf.</th><th>Écart</th></tr></thead>
+          <tbody id="metrics"></tbody>
+        </table>
+        <p class="hint">Angles 2D mesurés dans l'image. Buste : inclinaison par rapport à la verticale. Épaules et hanches : + quand le côté gauche du golfeur est plus haut.</p>
+      </div>
+
+      <div class="card">
+        <h2>Bien filmer</h2>
+        <ul class="tips">
+          <li>Utilise le mode ralenti de l'appareil photo, puis importe la vidéo.</li>
+          <li>Filme de face ou dans la ligne de jeu, comme la vidéo de référence.</li>
+          <li>Cadre tout le corps, téléphone fixe, à hauteur de hanches.</li>
+          <li>Coupe la vidéo pour ne garder que le swing, de l'adresse au finish.</li>
+        </ul>
+      </div>
+    </aside>
+  </div>
+</div>
+<div class="vids" id="vids"></div>
+
+<script type="module">
+/* ===== Configuration =====
+   Pour une version 100 % hors ligne (appli Expo), copier ces fichiers dans le projet
+   et remplacer les adresses par des chemins locaux. */
+const CFG = {
+  visionBundle: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs',
+  wasmPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm',
+  model: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
+  analysisFps: 60,      // images analysées par seconde de vidéo
+  maxFrames: 900        // plafond pour les longues vidéos
+};
+
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, u) => a + (b - a) * u;
+const deg = r => r * 180 / Math.PI;
+const fmt = (n, d = 2) => { let s = n.toFixed(d); if (/^-0(\.0+)?$/.test(s)) s = s.slice(1); return s.replace('.', ','); };
+const BONES = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
+const KEYS = ['address', 'top', 'impact'];
+const KEY_FR = { address: 'Adresse', top: 'Top', impact: 'Impact' };
+
+function makeClip(role) {
+  return { role, video: null, url: null, name: '', frames: [], dt: 1 / 60, duration: 0, w: 1080, h: 1920, keys: null, synthetic: false, ready: false };
+}
+
+const S = {
+  user: makeClip('user'), ref: makeClip('ref'),
+  view: 'compare', tU: 0, tR: 0, playing: false, speed: 0.5,
+  opacity: 0.35, showGhost: true, showSkU: true, showSkR: true,
+  align: { s: 1, dx: 0, dy: 0, mirror: false }, sync: 'keys',
+  demo: false, dirty: true, last: 0, cw: 0, ch: 0, dpr: 1, busy: 0
+};
+
+/* ===== Pose : interpolation, lissage, repères ===== */
+function poseAt(clip, t) {
+  const F = clip.frames; if (!F.length) return null;
+  const x = clamp(t / clip.dt, 0, F.length - 1);
+  const i0 = Math.floor(x), i1 = Math.min(i0 + 1, F.length - 1), u = x - i0;
+  const a = F[i0].lm, b = F[i1].lm;
+  if (!a || !b) return a || b;
+  return a.map((p, k) => [lerp(p[0], b[k][0], u), lerp(p[1], b[k][1], u), Math.min(p[2], b[k][2])]);
+}
+
+function cleanFrames(F) {
+  // combler les trous (interpolation) puis lisser sur 5 images
+  const n = F.length, idx = [];
+  F.forEach((f, i) => { if (f.lm) idx.push(i); });
+  if (!idx.length) return false;
+  for (let i = 0; i < n; i++) {
+    if (F[i].lm) continue;
+    const prev = [...idx].reverse().find(j => j < i), next = idx.find(j => j > i);
+    if (prev === undefined) F[i].lm = F[next].lm.map(p => [...p]);
+    else if (next === undefined) F[i].lm = F[prev].lm.map(p => [...p]);
+    else { const u = (i - prev) / (next - prev); F[i].lm = F[prev].lm.map((p, k) => [lerp(p[0], F[next].lm[k][0], u), lerp(p[1], F[next].lm[k][1], u), 0.3]); }
+  }
+  const src = F.map(f => f.lm.map(p => [...p]));
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - 2), b = Math.min(n - 1, i + 2);
+    F[i].lm = src[i].map((p, k) => {
+      let sx = 0, sy = 0, c = 0;
+      for (let j = a; j <= b; j++) { const w = j === i ? 2 : 1; sx += src[j][k][0] * w; sy += src[j][k][1] * w; c += w; }
+      return [sx / c, sy / c, p[2]];
+    });
+  }
+  return true;
+}
+
+function detectKeys(clip) {
+  const F = clip.frames, n = F.length, dt = clip.dt;
+  const raw = F.map(f => -(f.lm[15][1] + f.lm[16][1]) / 2); // hauteur des mains (plus grand = plus haut)
+  const h = raw.map((_, i) => { let s = 0, c = 0; for (let j = Math.max(0, i - 2); j <= Math.min(n - 1, i + 2); j++) { s += raw[j]; c++; } return s / c; });
+  const fallback = { address: clip.duration * 0.15, top: clip.duration * 0.5, impact: clip.duration * 0.7, auto: false };
+  const n0 = Math.max(3, Math.floor(n * 0.12));
+  const h0 = [...h.slice(0, n0)].sort((a, b) => a - b)[Math.floor(n0 / 2)];
+  const A = Math.max(...h) - h0;
+  if (!(A > 0.05)) return fallback;
+  const iRise = h.findIndex(v => v > h0 + 0.5 * A);
+  if (iRise < 0) return fallback;
+  let iRet = n - 1;
+  for (let i = iRise; i < n; i++) if (h[i] < h0 + 0.2 * A) { iRet = i; break; }
+  let top = iRise; for (let i = iRise; i <= iRet; i++) if (h[i] > h[top]) top = i;
+  let imp = iRet; const lim = Math.min(n - 1, iRet + Math.round(0.12 / dt));
+  for (let i = iRet; i <= lim; i++) if (h[i] < h[imp]) imp = i;
+  let addr = 0; for (let i = top; i >= 0; i--) if (h[i] <= h0 + 0.02 * A) { addr = i; break; }
+  if (!(addr < top && top < imp)) return fallback;
+  return { address: addr * dt, top: top * dt, impact: imp * dt, auto: true };
+}
+
+function keysValid(k) { return k && k.address < k.top && k.top < k.impact; }
+
+/* ===== Correspondance temporelle moi → référence ===== */
+function mapToRef(tU) {
+  const U = S.user.keys, R = S.ref.keys, d = S.ref.duration;
+  if (S.sync === 'start' || !U || !R) return clamp(tU, 0, d);
+  if (S.sync === 'impact' || !keysValid(U) || !keysValid(R)) return clamp(R.impact + (tU - U.impact), 0, d);
+  const ku = [U.address, U.top, U.impact], kr = [R.address, R.top, R.impact];
+  let t;
+  if (tU <= ku[0]) t = kr[0] + (tU - ku[0]);
+  else if (tU >= ku[2]) t = kr[2] + (tU - ku[2]);
+  else { const s = tU < ku[1] ? 0 : 1; t = lerp(kr[s], kr[s + 1], (tU - ku[s]) / (ku[s + 1] - ku[s])); }
+  return clamp(t, 0, d);
+}
+function mapSlope(tU) { const e = 0.01; return Math.max(0, (mapToRef(tU + e) - mapToRef(tU - e)) / (2 * e)); }
+
+/* ===== Géométrie ===== */
+function fit(sw, sh, dw, dh) { const k = Math.min(dw / sw, dh / sh), w = sw * k, h = sh * k; return { x: (dw - w) / 2, y: (dh - h) / 2, w, h }; }
+function ghostXf() { const a = S.align; return { cx: S.cw / 2, cy: S.ch / 2, dx: a.dx * S.cw, dy: a.dy * S.ch, s: a.s, m: a.mirror ? -1 : 1 }; }
+function toCanvas(lm, rect, xf) {
+  return lm.map(([x, y, v]) => {
+    let px = rect.x + x * rect.w, py = rect.y + y * rect.h;
+    if (xf) { px = xf.cx + xf.dx + xf.s * xf.m * (px - xf.cx); py = xf.cy + xf.dy + xf.s * (py - xf.cy); }
+    return [px, py, v];
+  });
+}
+const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+
+/* ===== Vue courante ===== */
+function effView() {
+  if (S.view === 'user' && S.user.ready) return 'user';
+  if (S.view === 'ref' && S.ref.ready) return 'ref';
+  if (S.user.ready) return 'compare';
+  if (S.ref.ready) return 'ref';
+  return 'none';
+}
+function master() { const v = effView(); return v === 'ref' ? S.ref : S.user; }
+function curT() { return effView() === 'ref' ? S.tR : S.tU; }
+function refTime() { return effView() === 'ref' ? S.tR : mapToRef(S.tU); }
+
+function setT(t, seek = true) {
+  const m = master(); t = clamp(t, 0, m.duration || 0);
+  if (effView() === 'ref') S.tR = t; else S.tU = t;
+  if (seek) seekAll();
+  $('scrub').value = t;
+  S.dirty = true;
+}
+function seekVideo(v, t) { if (v && Math.abs(v.currentTime - t) > 0.0005) { try { v.currentTime = t; } catch (e) {} } }
+function seekAll() {
+  const ev = effView();
+  if (ev === 'compare') { seekVideo(S.user.video, S.tU); if (S.ref.ready) seekVideo(S.ref.video, mapToRef(S.tU)); }
+  else if (ev === 'user') seekVideo(S.user.video, S.tU);
+  else if (ev === 'ref') seekVideo(S.ref.video, S.tR);
+}
+
+/* ===== Lecture ===== */
+function play() {
+  const m = master(); if (!m.ready) return;
+  if (curT() >= m.duration - m.dt) setT(0);
+  S.playing = true; S.last = performance.now();
+  if (m.video) { m.video.playbackRate = S.speed; m.video.play().catch(() => {}); }
+  $('playIco').innerHTML = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
+  $('bPlay').setAttribute('aria-label', 'Pause');
+}
+function pause() {
+  S.playing = false;
+  [S.user.video, S.ref.video].forEach(v => v && v.pause());
+  $('playIco').innerHTML = '<path d="M7 5v14l12-7z"/>';
+  $('bPlay').setAttribute('aria-label', 'Lecture');
+  setT(curT());
+}
+function followRef() {
+  const v = S.ref.video; if (!v || !S.ref.ready) return;
+  const target = mapToRef(S.tU);
+  if (target <= 0.001 || target >= S.ref.duration - 0.02) { if (!v.paused) v.pause(); seekVideo(v, target); return; }
+  const r = clamp(S.speed * mapSlope(S.tU), 0.0625, 16);
+  if (Math.abs(v.playbackRate - r) > 0.01) v.playbackRate = r;
+  if (v.paused) v.play().catch(() => {});
+  if (Math.abs(v.currentTime - target) > 0.1) seekVideo(v, target);
+}
+function loop(now) {
+  const dtw = Math.min(0.1, (now - S.last) / 1000); S.last = now;
+  if (S.playing) {
+    const m = master();
+    let t = (m.video && !m.video.paused) ? m.video.currentTime : curT() + dtw * S.speed;
+    if (t >= m.duration - 0.0005 || (m.video && m.video.ended)) { setT(m.duration, false); pause(); }
+    else {
+      setT(t, false);
+      if (effView() === 'compare') followRef();
+    }
+  }
+  if (S.dirty) { S.dirty = false; draw(); }
+  requestAnimationFrame(loop);
+}
+
+/* ===== Rendu ===== */
+const cv = $('cv'), ctx = cv.getContext('2d');
+function resize() {
+  const m = effView() === 'ref' ? S.ref : S.user.ready ? S.user : S.ref;
+  const a = m.w / m.h;
+  const W = $('stage').clientWidth;
+  const maxH = Math.min(window.innerHeight * 0.66, 780);
+  let cw = Math.min(W, maxH * a), ch = cw / a;
+  S.cw = Math.round(cw); S.ch = Math.round(ch); S.dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = S.cw * S.dpr; cv.height = S.ch * S.dpr; cv.style.width = S.cw + 'px'; cv.style.height = S.ch + 'px';
+  S.dirty = true;
+}
+
+function drawBody(P, color, alpha) { // silhouette pour la démo (remplace l'image vidéo)
+  const lw = S.ch * 0.032;
+  ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = lw;
+  ctx.beginPath();
+  for (const [a, b] of BONES) { ctx.moveTo(P[a][0], P[a][1]); ctx.lineTo(P[b][0], P[b][1]); }
+  const sh = mid(P[11], P[12]); ctx.moveTo(sh[0], sh[1]); ctx.lineTo(P[0][0], P[0][1]);
+  ctx.stroke();
+  ctx.beginPath(); ctx.arc(P[0][0], P[0][1], dist(P[11], P[12]) * 0.32 + lw * 0.4, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+function drawSkeleton(P, color, alpha = 1) {
+  const lw = Math.max(2, S.ch * 0.0055);
+  ctx.save(); ctx.globalAlpha = alpha; ctx.lineCap = 'round';
+  for (const [a, b] of BONES) {
+    if (P[a][2] < 0.2 && P[b][2] < 0.2) continue;
+    ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = lw + 2.5;
+    ctx.beginPath(); ctx.moveTo(P[a][0], P[a][1]); ctx.lineTo(P[b][0], P[b][1]); ctx.stroke();
+    ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.stroke();
+  }
+  const sh = mid(P[11], P[12]);
+  ctx.setLineDash([lw * 1.4, lw * 1.4]); ctx.strokeStyle = color; ctx.lineWidth = lw * 0.8;
+  ctx.beginPath(); ctx.moveTo(sh[0], sh[1]); ctx.lineTo(P[0][0], P[0][1]); ctx.stroke(); ctx.setLineDash([]);
+  ctx.beginPath(); ctx.arc(P[0][0], P[0][1], Math.max(lw * 2, dist(P[11], P[12]) * 0.22), 0, Math.PI * 2); ctx.stroke();
+  for (const k of [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]) {
+    ctx.beginPath(); ctx.arc(P[k][0], P[k][1], lw * 1.05, 0, Math.PI * 2);
+    ctx.fillStyle = '#0d1311'; ctx.fill(); ctx.lineWidth = lw * 0.7; ctx.strokeStyle = color; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawClipImage(clip, rect, xf, alpha) {
+  if (clip.synthetic) return; // la démo dessine des silhouettes
+  const v = clip.video; if (!v || v.readyState < 2) return;
+  ctx.save(); ctx.globalAlpha = alpha;
+  if (xf) { ctx.translate(xf.cx + xf.dx, xf.cy + xf.dy); ctx.scale(xf.s * xf.m, xf.s); ctx.drawImage(v, rect.x - xf.cx, rect.y - xf.cy, rect.w, rect.h); }
+  else ctx.drawImage(v, rect.x, rect.y, rect.w, rect.h);
+  ctx.restore();
+}
+
+function draw() {
+  const ev = effView();
+  ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
+  const g = ctx.createLinearGradient(0, 0, 0, S.ch);
+  g.addColorStop(0, '#101816'); g.addColorStop(1, '#0a0f0d');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, S.cw, S.ch);
+  if (ev === 'none') { updateReadouts(null, null); return; }
+
+  let base, tb, ghost = null, tg = 0;
+  if (ev === 'compare') { base = S.user; tb = S.tU; if (S.ref.ready) { ghost = S.ref; tg = mapToRef(S.tU); } }
+  else if (ev === 'user') { base = S.user; tb = S.tU; }
+  else { base = S.ref; tb = S.tR; }
+
+  const rb = fit(base.w, base.h, S.cw, S.ch);
+  const Pb = poseAt(base, tb) && toCanvas(poseAt(base, tb), rb);
+  if (base.synthetic) {
+    ctx.strokeStyle = '#1f2a26'; ctx.lineWidth = 1;
+    const gy = rb.y + rb.h * 0.86; ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(S.cw, gy); ctx.stroke();
+    if (Pb) drawBody(Pb, '#a9b8b1', 0.55);
+  }
+  drawClipImage(base, rb, null, 1);
+
+  let Pg = null;
+  if (ghost) {
+    const rg = fit(ghost.w, ghost.h, S.cw, S.ch), xf = ghostXf();
+    const lg = poseAt(ghost, tg); Pg = lg && toCanvas(lg, rg, xf);
+    if (S.showGhost) {
+      if (ghost.synthetic) { if (Pg) drawBody(Pg, '#ffffff', S.opacity); }
+      else drawClipImage(ghost, rg, xf, S.opacity);
+    }
+  }
+  const baseIsUser = base === S.user;
+  if (Pg && S.showSkR) drawSkeleton(Pg, getComputedStyle(document.documentElement).getPropertyValue('--pro').trim() || '#4fe08f', 0.95);
+  if (Pb && (baseIsUser ? S.showSkU : S.showSkR)) drawSkeleton(Pb, baseIsUser ? '#5aa2ff' : '#4fe08f');
+
+  updateReadouts(baseIsUser ? Pb : (ev === 'ref' ? null : null), ev === 'ref' ? Pb : Pg);
+}
+
+/* ===== Mesures et affichages ===== */
+function metrics(P) {
+  if (!P) return null;
+  const sh = mid(P[11], P[12]), hp = mid(P[23], P[24]);
+  const dir = Math.sign(P[12][0] - P[11][0]) || 1; // côté droit du golfeur à l'écran
+  const tilt = (l, r) => deg(Math.atan2(P[r][1] - P[l][1], Math.abs(P[l][0] - P[r][0]) + 1e-6));
+  const knee = (h, k, a) => { const v1 = [P[h][0] - P[k][0], P[h][1] - P[k][1]], v2 = [P[a][0] - P[k][0], P[a][1] - P[k][1]]; const c = (v1[0] * v2[0] + v1[1] * v2[1]) / (Math.hypot(...v1) * Math.hypot(...v2) + 1e-6); return 180 - deg(Math.acos(clamp(c, -1, 1))); };
+  return {
+    spine: deg(Math.atan2((sh[0] - hp[0]) * dir, hp[1] - sh[1])),
+    shoulders: tilt(11, 12),
+    hips: tilt(23, 24),
+    knees: (knee(23, 25, 27) + knee(24, 26, 28)) / 2
+  };
+}
+const MET = [['spine', 'Buste'], ['shoulders', 'Épaules'], ['hips', 'Hanches'], ['knees', 'Flexion genoux']];
+function updateReadouts(Pu, Pr) {
+  const ev = effView();
+  const mu = metrics(Pu), mr = metrics(Pr);
+  $('metrics').innerHTML = MET.map(([k, label]) => {
+    const a = mu ? mu[k] : null, b = mr ? mr[k] : null;
+    const d = a !== null && b !== null ? a - b : null;
+    return `<tr><td>${label}</td><td class="u">${a === null ? '–' : fmt(a, 0) + '°'}</td><td class="p">${b === null ? '–' : fmt(b, 0) + '°'}</td><td class="${d !== null && Math.abs(d) >= 6 ? 'hot' : ''}">${d === null ? '–' : (Math.round(d) > 0 ? '+' : '') + fmt(d, 0) + '°'}</td></tr>`;
+  }).join('');
+  $('hudU').hidden = !(ev === 'compare' || ev === 'user');
+  $('hudR').hidden = !((ev === 'compare' && S.ref.ready) || ev === 'ref');
+  $('hudU').textContent = 'Moi ' + fmt(S.tU) + ' s';
+  $('hudR').textContent = 'Réf ' + fmt(refTime()) + ' s';
+  const k = master().keys, t = curT();
+  let ph = '';
+  if (k && keysValid(k)) {
+    const near = master().dt * 1.5;
+    if (Math.abs(t - k.address) < near) ph = 'Adresse'; else if (Math.abs(t - k.top) < near) ph = 'Top'; else if (Math.abs(t - k.impact) < near) ph = 'Impact';
+    else ph = t < k.address ? 'Avant l\'adresse' : t < k.top ? 'Montée' : t < k.impact ? 'Descente' : 'Traversée';
+  }
+  $('hudPhase').textContent = ph; $('hudPhase').hidden = !ph;
+}
+
+function renderMarkers() {
+  const m = master(), box = $('marks');
+  box.innerHTML = '';
+  $('scrub').max = m.duration || 1; $('scrub').step = m.dt || 0.01;
+  if (!m.keys || !m.duration) return;
+  KEYS.forEach(k => {
+    const el = document.createElement('span'); el.className = 'mk';
+    el.textContent = KEY_FR[k][0]; el.title = KEY_FR[k];
+    el.style.left = (100 * m.keys[k] / m.duration) + '%'; box.appendChild(el);
+  });
+}
+function renderKeyTable() {
+  const U = S.user.keys, R = S.ref.keys;
+  $('keyTable').innerHTML = KEYS.map(k => `<tr><td>${KEY_FR[k]}</td><td class="u">${U ? fmt(U[k]) + ' s' : '–'}</td><td class="p">${R ? fmt(R[k]) + ' s' : '–'}</td></tr>`).join('');
+  const tempo = K => keysValid(K) ? (K.top - K.address) / (K.impact - K.top) : null;
+  const tu = tempo(U), tr = tempo(R);
+  const parts = [];
+  if (tu) parts.push(`ton tempo ${fmt(tu, 1)} : 1`);
+  if (tr) parts.push(`référence ${fmt(tr, 1)} : 1`);
+  $('tempo').textContent = parts.length ? 'Rapport montée / descente : ' + parts.join(', ') + '. Les pros tournent souvent autour de 3 : 1.' : '';
+  [U, R].forEach((K, i) => { if (K && !keysValid(K)) $('tempo').textContent = `Repères ${i ? 'de la référence' : 'de ton swing'} dans le désordre : l'adresse doit précéder le top, puis l'impact.`; });
+}
+function refreshAll() { resize(); renderMarkers(); renderKeyTable(); updateViewUI(); $('scrub').value = curT(); S.dirty = true; }
+
+function notice(html, err = false) { const n = $('notice'); n.innerHTML = html; n.classList.toggle('err', err); n.hidden = !html; }
+
+/* ===== Calage automatique ===== */
+function autoAlign() {
+  if (!S.user.ready || !S.ref.ready) return;
+  const tu = S.user.keys ? S.user.keys.address : S.tU, tr = S.ref.keys ? S.ref.keys.address : mapToRef(S.tU);
+  const lu = poseAt(S.user, tu), lr = poseAt(S.ref, tr); if (!lu || !lr) return;
+  const cx = S.cw / 2, cy = S.ch / 2;
+  const U = toCanvas(lu, fit(S.user.w, S.user.h, S.cw, S.ch));
+  const R = toCanvas(lr, fit(S.ref.w, S.ref.h, S.cw, S.ch), { cx, cy, dx: 0, dy: 0, s: 1, m: S.align.mirror ? -1 : 1 });
+  const hU = dist(mid(U[11], U[12]), mid(U[27], U[28])), hR = dist(mid(R[11], R[12]), mid(R[27], R[28]));
+  const s = clamp(hU / hR, 0.3, 3);
+  const pu = mid(U[23], U[24]), pr = mid(R[23], R[24]);
+  S.align.s = s;
+  S.align.dx = clamp((pu[0] - (cx + s * (pr[0] - cx))) / S.cw, -0.6, 0.6);
+  S.align.dy = clamp((pu[1] - (cy + s * (pr[1] - cy))) / S.ch, -0.6, 0.6);
+  syncAlignUI(); S.dirty = true;
+}
+function syncAlignUI() {
+  $('aS').value = S.align.s; $('aSOut').textContent = fmt(S.align.s);
+  $('aX').value = S.align.dx; $('aXOut').textContent = Math.round(S.align.dx * 100);
+  $('aY').value = S.align.dy; $('aYOut').textContent = Math.round(S.align.dy * 100);
+  $('mirror').checked = S.align.mirror;
+}
+
+/* ===== MediaPipe ===== */
+let landmarker = null, tsMs = 0;
+async function getLandmarker() {
+  if (landmarker) return landmarker;
+  const vision = await import(CFG.visionBundle);
+  const files = await vision.FilesetResolver.forVisionTasks(CFG.wasmPath);
+  const opts = d => ({ baseOptions: { modelAssetPath: CFG.model, delegate: d }, runningMode: 'VIDEO', numPoses: 1, minPoseDetectionConfidence: 0.4, minTrackingConfidence: 0.4 });
+  try { landmarker = await vision.PoseLandmarker.createFromOptions(files, opts('GPU')); }
+  catch (e) { landmarker = await vision.PoseLandmarker.createFromOptions(files, opts('CPU')); }
+  return landmarker;
+}
+function waitEvent(el, ev, ms = 4000) { return new Promise(res => { const done = () => { el.removeEventListener(ev, done); res(); }; el.addEventListener(ev, done); setTimeout(done, ms); }); }
+async function seekTo(v, t) { if (Math.abs(v.currentTime - t) < 0.0001 && v.readyState >= 2) return; const p = waitEvent(v, 'seeked', 2000); v.currentTime = t; await p; }
+
+async function loadVideo(file, role) {
+  if (S.demo) clearDemo();
+  pause();
+  const clip = makeClip(role); const old = S[role];
+  if (old.video) { old.video.remove(); URL.revokeObjectURL(old.url); }
+  S[role] = clip; clip.name = file.name;
+  const v = document.createElement('video');
+  v.muted = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto';
+  clip.url = URL.createObjectURL(file); v.src = clip.url; $('vids').appendChild(v); clip.video = v;
+  v.addEventListener('seeked', () => { S.dirty = true; });
+  const nameEl = role === 'user' ? $('nameU') : $('nameR'), prog = role === 'user' ? $('progU') : $('progR');
+  nameEl.textContent = file.name + ' · chargement…'; prog.hidden = false; prog.firstElementChild.style.width = '0%';
+  S.busy++; refreshAll();
+  try {
+    const loaded = waitEvent(v, 'loadeddata', 8000); v.load(); await v.play().catch(() => {}); v.pause(); await loaded;
+    if (!v.videoWidth) throw new Error('vidéo illisible');
+    clip.w = v.videoWidth; clip.h = v.videoHeight; clip.duration = v.duration;
+    if (!isFinite(clip.duration) || clip.duration <= 0) throw new Error('durée inconnue');
+    nameEl.textContent = file.name + ' · préparation de l\'analyse…';
+    const lm = await getLandmarker().catch(e => { throw new Error('modele'); });
+    let rate = CFG.analysisFps; if (clip.duration * rate > CFG.maxFrames) rate = CFG.maxFrames / clip.duration;
+    clip.dt = 1 / rate;
+    const n = Math.floor(clip.duration * rate - 1e-6) + 1;
+    for (let k = 0; k < n; k++) {
+      const t = Math.min(k * clip.dt, clip.duration - 0.001);
+      await seekTo(v, t);
+      tsMs += Math.max(1, Math.round(clip.dt * 1000));
+      const r = lm.detectForVideo(v, tsMs);
+      const p = r.landmarks && r.landmarks[0];
+      clip.frames.push({ t, lm: p ? p.map(q => [q.x, q.y, q.visibility ?? 1]) : null });
+      if (k % 4 === 0) { prog.firstElementChild.style.width = (100 * (k + 1) / n) + '%'; nameEl.textContent = `${file.name} · analyse ${Math.round(100 * (k + 1) / n)} %`; await new Promise(r => setTimeout(r)); }
+    }
+    if (!cleanFrames(clip.frames)) throw new Error('personne');
+    clip.keys = detectKeys(clip);
+    clip.ready = true;
+    nameEl.textContent = `${file.name} · ${fmt(clip.duration, 1)} s`;
+    if (!clip.keys.auto) notice(`<b>Repères approximatifs</b> pour ${role === 'user' ? 'ton swing' : 'la référence'} : vérifie-les dans « Corriger les repères ».`);
+    else notice('');
+  } catch (e) {
+    clip.ready = false;
+    const msg = e.message === 'modele' ? 'Impossible de charger le modèle d\'analyse. Il faut une connexion internet au premier lancement.'
+      : e.message === 'personne' ? 'Aucun golfeur détecté. Cadre tout le corps, avec un bon éclairage.'
+      : 'Cette vidéo ne peut pas être lue par le navigateur. Essaie de l\'exporter en MP4 (H.264).';
+    notice('<b>' + file.name + ' :</b> ' + msg, true);
+    nameEl.textContent = 'Aucune vidéo';
+  }
+  prog.hidden = true; S.busy--;
+  S.tU = 0; S.tR = 0;
+  if (S.user.ready && S.ref.ready) { S.view = 'compare'; resize(); autoAlign(); }
+  refreshAll(); setT(S.user.ready && S.user.keys ? S.user.keys.address : 0);
+}
+
+/* ===== Démo : deux swings simulés ===== */
+function theta(t, o) {
+  if (t < o.tAddr) return 0;
+  if (t < o.tTop) { const u = (t - o.tAddr) / (o.tTop - o.tAddr); return o.top * (0.5 - 0.5 * Math.cos(Math.PI * u)); }
+  if (t < o.tImp) { const u = (t - o.tTop) / (o.tImp - o.tTop); return o.top * Math.cos(u * Math.PI / 2); }
+  const fd = 0.45; if (t < o.tImp + fd) { const u = (t - o.tImp) / fd; return -o.fin * Math.sin(u * Math.PI / 2); }
+  return -o.fin;
+}
+function synthClip(role, name, o) {
+  const W = 1080, H = 1920, c = makeClip(role); c.synthetic = true; c.name = name; c.w = W; c.h = H; c.duration = o.dur;
+  const n = Math.round(o.dur / c.dt) + 1, sc = o.scale;
+  for (let k = 0; k < n; k++) {
+    const t = k * c.dt, th = theta(t, o) * Math.PI / 180;
+    const back = Math.max(0, th) / (o.top * Math.PI / 180), thru = Math.max(0, -th) / (o.fin * Math.PI / 180);
+    const turn = Math.max(back, thru);
+    const down = t <= o.tTop ? 0 : Math.min(1, (t - o.tTop) / (o.tImp - o.tTop + 0.2));
+    const rise = o.standUp * down * sc;
+    const shift = (-20 * back + 45 * (t > o.tTop ? Math.min(1, (t - o.tTop) / (o.tImp - o.tTop + 0.15)) : 0)) * sc;
+    const ankL = [o.cx + 95 * sc, o.base], ankR = [o.cx - 95 * sc, o.base];
+    const hipM = [o.cx + shift, o.base - 450 * sc - rise];
+    const hw = 58 * sc * (1 - 0.3 * turn);
+    const hipL = [hipM[0] + hw, hipM[1] - 8 * back * sc + 10 * thru * sc], hipR = [hipM[0] - hw, hipM[1] + 8 * back * sc - 10 * thru * sc];
+    const kneeL = [lerp(hipL[0], ankL[0], 0.5) - (10 + 22 * back) * sc, lerp(hipL[1], ankL[1], 0.5) + 6 * sc];
+    const kneeR = [lerp(hipR[0], ankR[0], 0.5) + 10 * sc, lerp(hipR[1], ankR[1], 0.5) + 6 * sc];
+    const tilt = (o.spine + o.spineLoss * down) * Math.PI / 180;
+    const shM = [hipM[0] - Math.sin(tilt) * 300 * sc, hipM[1] - Math.cos(tilt) * 300 * sc];
+    const sw = 88 * sc * (1 - 0.45 * turn);
+    const shL = [shM[0] + sw, shM[1] + 32 * back * sc - 18 * thru * sc], shR = [shM[0] - sw, shM[1] - 32 * back * sc + 18 * thru * sc];
+    const nose = [shM[0] - Math.sin(tilt) * 112 * sc, shM[1] - Math.cos(tilt) * 112 * sc];
+    const piv = [shM[0], shM[1] + 30 * sc], R = 320 * sc;
+    const hands = [piv[0] - Math.sin(th) * R, piv[1] + Math.cos(th) * R];
+    const elbow = (s, bend) => {
+      const d = [hands[0] - s[0], hands[1] - s[1]], L = Math.hypot(...d) || 1; let nrm = [-d[1] / L, d[0] / L];
+      if (nrm[0] * (s[0] - shM[0]) + nrm[1] * (s[1] - shM[1]) < 0) nrm = [-nrm[0], -nrm[1]];
+      return [lerp(s[0], hands[0], 0.5) + nrm[0] * bend, lerp(s[1], hands[1], 0.5) + nrm[1] * bend];
+    };
+    const elL = elbow(shL, (6 + 10 * thru) * sc), elR = elbow(shR, (8 + 45 * back) * sc);
+    const pts = Array.from({ length: 33 }, () => nose);
+    Object.assign(pts, { 0: nose, 11: shL, 12: shR, 13: elL, 14: elR, 15: [hands[0] + 6 * sc, hands[1]], 16: [hands[0] - 6 * sc, hands[1] + 4 * sc], 23: hipL, 24: hipR, 25: kneeL, 26: kneeR, 27: ankL, 28: ankR });
+    c.frames.push({ t, lm: pts.map(p => [p[0] / W, p[1] / H, 1]) });
+  }
+  c.keys = detectKeys(c); c.ready = true;
+  return c;
+}
+function loadDemo() {
+  pause();
+  [S.user, S.ref].forEach(c => { if (c.video) { c.video.remove(); URL.revokeObjectURL(c.url); } });
+  S.user = synthClip('user', 'Swing simulé (amateur)', { dur: 3.3, tAddr: 0.8, tTop: 2.05, tImp: 2.42, top: 172, fin: 160, spine: 4, spineLoss: -6, standUp: 40, cx: 540, base: 1650, scale: 1.0 });
+  S.ref = synthClip('ref', 'Swing simulé (référence)', { dur: 2.7, tAddr: 0.6, tTop: 1.45, tImp: 1.73, top: 150, fin: 160, spine: 11, spineLoss: 0, standUp: 0, cx: 600, base: 1480, scale: 0.82 });
+  S.demo = true; S.view = 'compare'; S.align = { s: 1, dx: 0, dy: 0, mirror: false };
+  $('nameU').textContent = S.user.name; $('nameR').textContent = S.ref.name;
+  notice('<b>Démo :</b> deux swings simulés, sans vidéo. Importe ton swing et une référence pour les remplacer.');
+  resize(); autoAlign(); refreshAll(); setT(S.user.keys.top);
+}
+function clearDemo() {
+  S.demo = false; S.user = makeClip('user'); S.ref = makeClip('ref');
+  $('nameU').textContent = 'Aucune vidéo'; $('nameR').textContent = 'Aucune vidéo';
+  S.align = { s: 1, dx: 0, dy: 0, mirror: false }; syncAlignUI(); notice('');
+}
+
+/* ===== Interface ===== */
+function updateViewUI() {
+  document.querySelectorAll('#viewSeg button').forEach(b => {
+    const v = b.dataset.view; b.setAttribute('aria-pressed', String(S.view === v));
+    b.disabled = (v === 'user' && !S.user.ready) || (v === 'ref' && !S.ref.ready) || (v === 'compare' && !S.user.ready);
+  });
+  document.querySelectorAll('#syncSeg button').forEach(b => b.setAttribute('aria-pressed', String(S.sync === b.dataset.sync)));
+  $('keyEdit').hidden = !(S.view === 'user' || S.view === 'ref');
+  const has = master().ready;
+  ['bStart', 'bPrev', 'bPlay', 'bNext', 'scrub'].forEach(id => $(id).disabled = !has);
+  document.querySelectorAll('[data-jump]').forEach(b => b.disabled = !(has && master().keys));
+  $('autoAlign').disabled = !(S.user.ready && S.ref.ready);
+}
+
+$('fileU').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) loadVideo(f, 'user'); });
+$('fileR').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) loadVideo(f, 'ref'); });
+$('demoBtn').addEventListener('click', loadDemo);
+$('bPlay').addEventListener('click', () => S.playing ? pause() : play());
+$('bStart').addEventListener('click', () => { pause(); setT(0); });
+const step = n => { if (S.playing) pause(); setT(curT() + n * master().dt); };
+$('bPrev').addEventListener('click', () => step(-1));
+$('bNext').addEventListener('click', () => step(1));
+$('scrub').addEventListener('input', e => { if (S.playing) pause(); setT(+e.target.value); });
+$('speed').addEventListener('change', e => { S.speed = +e.target.value; const m = master(); if (S.playing && m.video) m.video.playbackRate = S.speed; });
+document.querySelectorAll('[data-jump]').forEach(b => b.addEventListener('click', () => { const k = master().keys; if (!k) return; if (S.playing) pause(); setT(k[b.dataset.jump]); }));
+document.querySelectorAll('[data-set]').forEach(b => b.addEventListener('click', () => {
+  const clip = S.view === 'ref' ? S.ref : S.user; if (!clip.keys) return;
+  clip.keys[b.dataset.set] = curT(); clip.keys.auto = false;
+  renderMarkers(); renderKeyTable(); S.dirty = true;
+}));
+document.querySelectorAll('#syncSeg button').forEach(b => b.addEventListener('click', () => { S.sync = b.dataset.sync; updateViewUI(); seekAll(); S.dirty = true; }));
+document.querySelectorAll('#viewSeg button').forEach(b => b.addEventListener('click', () => {
+  if (b.disabled) return; pause();
+  const was = effView();
+  if (was === 'compare' && b.dataset.view === 'ref') S.tR = mapToRef(S.tU);
+  S.view = b.dataset.view; refreshAll(); setT(curT());
+}));
+$('opacity').addEventListener('input', e => { S.opacity = +e.target.value; $('opacityOut').textContent = Math.round(S.opacity * 100) + ' %'; S.dirty = true; });
+$('tGhost').addEventListener('change', e => { S.showGhost = e.target.checked; S.dirty = true; });
+$('tSkU').addEventListener('change', e => { S.showSkU = e.target.checked; S.dirty = true; });
+$('tSkR').addEventListener('change', e => { S.showSkR = e.target.checked; S.dirty = true; });
+$('mirror').addEventListener('change', e => { S.align.mirror = e.target.checked; autoAlign(); S.dirty = true; });
+$('autoAlign').addEventListener('click', autoAlign);
+[['aS', 's'], ['aX', 'dx'], ['aY', 'dy']].forEach(([id, k]) => $(id).addEventListener('input', e => { S.align[k] = +e.target.value; syncAlignUI(); S.dirty = true; }));
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input[type=range],select') && e.key !== ' ') return;
+  if (e.key === ' ') { e.preventDefault(); S.playing ? pause() : play(); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); step(e.shiftKey ? -10 : -1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); step(e.shiftKey ? 10 : 1); }
+});
+window.addEventListener('resize', () => { resize(); });
+
+window.__swing = S;
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {}); // pour le débogage
+loadDemo();
+requestAnimationFrame(t => { S.last = t; loop(t); });
+</script>
+</body>
+</html>
