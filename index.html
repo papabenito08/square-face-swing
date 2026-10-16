@@ -107,7 +107,8 @@ td.u{color:var(--user)} td.p{color:var(--pro)} td.hot{color:var(--warn)}
 .keyset .btn{font-size:.82rem;padding:6px 10px;min-height:34px}
 .tips{margin:0;padding-left:18px;color:var(--muted);font-size:.85rem} .tips li{margin-bottom:4px}
 video.analyzing{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#080c0b;z-index:2}
-.anabadge{position:absolute;right:10px;top:10px;z-index:3}
+.anacv{position:absolute;left:0;top:0;z-index:3;pointer-events:none}
+.anabadge{position:absolute;right:10px;top:10px;z-index:4}
 .vids{position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;left:0;top:0}
 @media (prefers-reduced-motion:reduce){.prog i{transition:none}}
 @media (max-width:420px){.jumps{margin-left:0;width:100%}.jumps .btn{flex:1}.field{grid-template-columns:72px minmax(0,1fr) 42px}}
@@ -117,7 +118,7 @@ video.analyzing{position:absolute;inset:0;width:100%;height:100%;object-fit:cont
 <div class="wrap">
   <header class="bar">
     <img class="mark" src="icon-192.png" alt="" width="34" height="34">
-    <div class="brand"><h1>Square Face Swing</h1><p>Analyse sur ton téléphone, aucune vidéo envoyée</p></div>
+    <div class="brand"><h1>Square Face Swing</h1><p>Analyse sur ton téléphone, aucune vidéo envoyée · v3</p></div>
     <div class="sp"></div>
     <button class="btn" id="demoBtn" type="button">Démo</button>
   </header>
@@ -143,6 +144,7 @@ video.analyzing{position:absolute;inset:0;width:100%;height:100%;object-fit:cont
 
       <div class="stage" id="stage">
         <canvas id="cv" aria-label="Superposition des deux swings"></canvas>
+        <canvas id="anaCv" class="anacv" hidden></canvas>
         <span class="chip ph anabadge" id="anaBadge" hidden>Analyse en cours…</span>
         <div class="hud"><span class="chip ph" id="hudPhase">Adresse</span><span class="chip u" id="hudU">Moi 0,00 s</span><span class="chip p" id="hudR">Réf 0,00 s</span></div>
       </div>
@@ -394,7 +396,14 @@ function play() {
   const m = master(); if (!m.ready) return;
   if (curT() >= m.duration - m.dt) setT(0);
   S.playing = true; S.last = performance.now();
-  if (m.video) { m.video.playbackRate = S.speed; m.video.play().catch(() => {}); }
+  if (m.video) {
+    m.video.playbackRate = S.speed; S.shownT = null;
+    if (m.video.requestVideoFrameCallback) {
+      const v = m.video, cb = (now, meta) => { if (!S.playing) return; S.shownT = meta.mediaTime; S.dirty = true; v.requestVideoFrameCallback(cb); };
+      v.requestVideoFrameCallback(cb);
+    }
+    m.video.play().catch(() => {});
+  }
   $('playIco').innerHTML = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
   $('bPlay').setAttribute('aria-label', 'Pause');
 }
@@ -418,7 +427,7 @@ function loop(now) {
   const dtw = Math.min(0.1, (now - S.last) / 1000); S.last = now;
   if (S.playing) {
     const m = master();
-    let t = (m.video && !m.video.paused) ? m.video.currentTime : curT() + dtw * S.speed;
+    let t = (m.video && !m.video.paused) ? (S.shownT ?? m.video.currentTime) : curT() + dtw * S.speed;
     if (t >= m.duration - 0.0005 || (m.video && m.video.ended)) { setT(m.duration, false); pause(); }
     else {
       setT(t, false);
@@ -611,7 +620,7 @@ async function getLandmarker() {
   if (landmarker) return landmarker;
   const vision = await import(CFG.visionBundle);
   const files = await vision.FilesetResolver.forVisionTasks(CFG.wasmPath);
-  const opts = d => ({ baseOptions: { modelAssetPath: CFG.model, delegate: d }, runningMode: 'VIDEO', numPoses: 1, minPoseDetectionConfidence: 0.4, minTrackingConfidence: 0.4 });
+  const opts = d => ({ baseOptions: { modelAssetPath: CFG.model, delegate: d }, runningMode: 'IMAGE', numPoses: 1, minPoseDetectionConfidence: 0.3, minPosePresenceConfidence: 0.3 });
   try { landmarker = await vision.PoseLandmarker.createFromOptions(files, opts('GPU')); }
   catch (e) { landmarker = await vision.PoseLandmarker.createFromOptions(files, opts('CPU')); }
   return landmarker;
@@ -619,6 +628,32 @@ async function getLandmarker() {
 function waitEvent(el, ev, ms = 4000) { return new Promise(res => { const done = () => { el.removeEventListener(ev, done); res(); }; el.addEventListener(ev, done); setTimeout(done, ms); }); }
 async function seekTo(v, t) { if (Math.abs(v.currentTime - t) < 0.0001 && v.readyState >= 2) return; const p = waitEvent(v, 'seeked', 2000); v.currentTime = t; await p; }
 
+// On copie d'abord l'image affichée dans un canevas 2D, puis on analyse ce canevas.
+// Sur Android, passer directement la vidéo au moteur peut lui donner une image en retard.
+const work = document.createElement('canvas'), wctx = work.getContext('2d');
+function detectFrame(lm, v, ts) {
+  const k = Math.min(1, 720 / Math.max(v.videoWidth, v.videoHeight));
+  const w = Math.max(2, Math.round(v.videoWidth * k)), h = Math.max(2, Math.round(v.videoHeight * k));
+  if (work.width !== w || work.height !== h) { work.width = w; work.height = h; }
+  wctx.drawImage(v, 0, 0, w, h);
+  // Mode « image » : chaque image est analysée seule. Le mode « vidéo » de MediaPipe lisse
+  // les mouvements d'une image à l'autre, ce qui met le squelette en retard sur un swing rapide.
+  const r = lm.detect(work);
+  drawLive(v, poseFrom(r));
+  return r;
+}
+// Squelette affiché en direct pendant l'analyse, pour voir tout de suite s'il suit le corps.
+function drawLive(v, lm) {
+  const c = $('anaCv'), st = $('stage');
+  const W = st.clientWidth, H = st.clientHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
+  if (c.width !== W * dpr || c.height !== H * dpr) { c.width = W * dpr; c.height = H * dpr; c.style.width = W + 'px'; c.style.height = H + 'px'; }
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  if (!lm) return;
+  const r = fit(v.videoWidth, v.videoHeight, W, H);
+  const P = lm.map(([x, y]) => [r.x + x * r.w, r.y + y * r.h]);
+  g.strokeStyle = '#f5c84b'; g.lineWidth = 3; g.lineCap = 'round';
+  g.beginPath(); for (const [a, b] of BONES) { g.moveTo(P[a][0], P[a][1]); g.lineTo(P[b][0], P[b][1]); } g.stroke();
+}
 function poseFrom(r) { const p = r.landmarks && r.landmarks[0]; return p ? p.map(q => [q.x, q.y, q.visibility ?? 1]) : null; }
 function nextTs(dtSec) { tsMs += Math.max(1, Math.round(dtSec * 1000)); return tsMs; }
 
@@ -632,7 +667,7 @@ function analyzeByPlayback(v, clip, lm, onProg) {
       if (stopped) return;
       const mt = meta.mediaTime;
       if (mt > last + 1e-4) {
-        const r = lm.detectForVideo(v, nextTs(last < 0 ? 0.033 : mt - last));
+        const r = detectFrame(lm, v, nextTs(last < 0 ? 0.033 : mt - last));
         frames.push({ t: mt, lm: poseFrom(r) });
         last = mt; lastProgress = performance.now(); onProg(mt / clip.duration);
       }
@@ -660,7 +695,7 @@ async function analyzeBySeeking(v, clip, lm, onProg) {
       v.currentTime = target;
     });
     if (frames.length && Math.abs(shown - frames[frames.length - 1].t) < 1e-4) continue;
-    const r = lm.detectForVideo(v, nextTs(step));
+    const r = detectFrame(lm, v, nextTs(step));
     frames.push({ t: shown, lm: poseFrom(r) });
     if (k % 4 === 0) { onProg(k / n); await new Promise(r => setTimeout(r)); }
   }
@@ -671,8 +706,8 @@ async function analyzeBySeeking(v, clip, lm, onProg) {
 // correctement une vidéo invisible.
 function showAnalysis(v, on) {
   const st = $('stage');
-  if (on) { v.className = 'analyzing'; st.appendChild(v); $('anaBadge').hidden = false; }
-  else { v.className = ''; $('vids').appendChild(v); $('anaBadge').hidden = true; }
+  if (on) { v.className = 'analyzing'; st.appendChild(v); $('anaBadge').hidden = false; $('anaCv').hidden = false; }
+  else { v.className = ''; $('vids').appendChild(v); $('anaBadge').hidden = true; $('anaCv').hidden = true; }
 }
 
 async function loadVideo(file, role) {
