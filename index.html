@@ -118,7 +118,7 @@ video.analyzing{position:absolute;inset:0;width:100%;height:100%;object-fit:cont
 <div class="wrap">
   <header class="bar">
     <img class="mark" src="icon-192.png" alt="" width="34" height="34">
-    <div class="brand"><h1>Square Face Swing</h1><p>Analyse sur ton téléphone, aucune vidéo envoyée · v3</p></div>
+    <div class="brand"><h1>Square Face Swing</h1><p>Analyse sur ton téléphone, aucune vidéo envoyée · v4</p></div>
     <div class="sp"></div>
     <button class="btn" id="demoBtn" type="button">Démo</button>
   </header>
@@ -248,7 +248,9 @@ video.analyzing{position:absolute;inset:0;width:100%;height:100%;object-fit:cont
 const CFG = {
   visionBundle: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs',
   wasmPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm',
-  model: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
+  // Modèle « heavy » : plus lent mais bien meilleur sur les positions difficiles (finish, bras cachés).
+  models: ['https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task',
+           'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task'],
   analysisRate: 0.25,   // vitesse de lecture pendant l'analyse
   maxFrames: 900        // plafond pour les longues vidéos
 };
@@ -302,13 +304,27 @@ function cleanFrames(F) {
     else if (next === undefined) F[i].lm = F[prev].lm.map(p => [...p]);
     else { const u = (i - prev) / (next - prev); F[i].lm = F[prev].lm.map((p, k) => [lerp(p[0], F[next].lm[k][0], u), lerp(p[1], F[next].lm[k][1], u), 0.3]); }
   }
+  // Le moteur inverse parfois gauche et droite d'une image à l'autre (finish, golfeur de profil).
+  // Si l'image inversée colle mieux à la précédente, on la remet dans le bon sens.
+  const GROUPS = [[[11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22]], [[23, 24], [25, 26], [27, 28], [29, 30], [31, 32]]];
+  for (let i = 1; i < n; i++) {
+    const prev = F[i - 1].lm, cur = F[i].lm;
+    for (const pairs of GROUPS) {
+      let keep = 0, swap = 0;
+      for (const [l, r] of pairs) {
+        keep += Math.hypot(cur[l][0] - prev[l][0], cur[l][1] - prev[l][1]) + Math.hypot(cur[r][0] - prev[r][0], cur[r][1] - prev[r][1]);
+        swap += Math.hypot(cur[r][0] - prev[l][0], cur[r][1] - prev[l][1]) + Math.hypot(cur[l][0] - prev[r][0], cur[l][1] - prev[r][1]);
+      }
+      if (swap < keep * 0.6) for (const [l, r] of pairs) { const t = cur[l]; cur[l] = cur[r]; cur[r] = t; }
+    }
+  }
   const src = F.map(f => f.lm.map(p => [...p]));
   for (let i = 0; i < n; i++) {
     const a = Math.max(0, i - 2), b = Math.min(n - 1, i + 2);
     F[i].lm = src[i].map((p, k) => {
-      let sx = 0, sy = 0, c = 0;
-      for (let j = a; j <= b; j++) { const w = j === i ? 2 : 1; sx += src[j][k][0] * w; sy += src[j][k][1] * w; c += w; }
-      return [sx / c, sy / c, p[2]];
+      let sx = 0, sy = 0, sv = 0, c = 0;
+      for (let j = a; j <= b; j++) { const w = j === i ? 2 : 1; sx += src[j][k][0] * w; sy += src[j][k][1] * w; sv += src[j][k][2] * w; c += w; }
+      return [sx / c, sy / c, sv / c];
     });
   }
   return true;
@@ -465,16 +481,22 @@ function drawSkeleton(P, color, alpha = 1) {
   const lw = Math.max(2, S.ch * 0.0055);
   ctx.save(); ctx.globalAlpha = alpha; ctx.lineCap = 'round';
   for (const [a, b] of BONES) {
-    if (P[a][2] < 0.2 && P[b][2] < 0.2) continue;
+    const vis = Math.min(P[a][2], P[b][2]);
+    if (vis < 0.15) continue;
+    const unsure = vis < 0.5; // partie cachée : tracée en pointillés, plus pâle
+    ctx.globalAlpha = alpha * (unsure ? 0.45 : 1);
+    ctx.setLineDash(unsure ? [lw * 1.6, lw * 1.4] : []);
     ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = lw + 2.5;
     ctx.beginPath(); ctx.moveTo(P[a][0], P[a][1]); ctx.lineTo(P[b][0], P[b][1]); ctx.stroke();
     ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.stroke();
   }
+  ctx.globalAlpha = alpha; ctx.setLineDash([]);
   const sh = mid(P[11], P[12]);
   ctx.setLineDash([lw * 1.4, lw * 1.4]); ctx.strokeStyle = color; ctx.lineWidth = lw * 0.8;
   ctx.beginPath(); ctx.moveTo(sh[0], sh[1]); ctx.lineTo(P[0][0], P[0][1]); ctx.stroke(); ctx.setLineDash([]);
   ctx.beginPath(); ctx.arc(P[0][0], P[0][1], Math.max(lw * 2, dist(P[11], P[12]) * 0.22), 0, Math.PI * 2); ctx.stroke();
   for (const k of [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]) {
+    if (P[k][2] < 0.5) continue;
     ctx.beginPath(); ctx.arc(P[k][0], P[k][1], lw * 1.05, 0, Math.PI * 2);
     ctx.fillStyle = '#0d1311'; ctx.fill(); ctx.lineWidth = lw * 0.7; ctx.strokeStyle = color; ctx.stroke();
   }
@@ -620,10 +642,12 @@ async function getLandmarker() {
   if (landmarker) return landmarker;
   const vision = await import(CFG.visionBundle);
   const files = await vision.FilesetResolver.forVisionTasks(CFG.wasmPath);
-  const opts = d => ({ baseOptions: { modelAssetPath: CFG.model, delegate: d }, runningMode: 'IMAGE', numPoses: 1, minPoseDetectionConfidence: 0.3, minPosePresenceConfidence: 0.3 });
-  try { landmarker = await vision.PoseLandmarker.createFromOptions(files, opts('GPU')); }
-  catch (e) { landmarker = await vision.PoseLandmarker.createFromOptions(files, opts('CPU')); }
-  return landmarker;
+  const opts = (m, d) => ({ baseOptions: { modelAssetPath: m, delegate: d }, runningMode: 'IMAGE', numPoses: 1, minPoseDetectionConfidence: 0.3, minPosePresenceConfidence: 0.3 });
+  let err;
+  for (const m of CFG.models) for (const d of ['GPU', 'CPU']) {
+    try { landmarker = await vision.PoseLandmarker.createFromOptions(files, opts(m, d)); return landmarker; } catch (e) { err = e; }
+  }
+  throw err;
 }
 function waitEvent(el, ev, ms = 4000) { return new Promise(res => { const done = () => { el.removeEventListener(ev, done); res(); }; el.addEventListener(ev, done); setTimeout(done, ms); }); }
 async function seekTo(v, t) { if (Math.abs(v.currentTime - t) < 0.0001 && v.readyState >= 2) return; const p = waitEvent(v, 'seeked', 2000); v.currentTime = t; await p; }
@@ -661,20 +685,25 @@ function nextTs(dtSec) { tsMs += Math.max(1, Math.round(dtSec * 1000)); return t
 // avec son instant exact (mediaTime). Le squelette reste ainsi calé sur l'image.
 function analyzeByPlayback(v, clip, lm, onProg) {
   return new Promise(resolve => {
-    const frames = []; let last = -1, stopped = false, lastProgress = performance.now();
+    const frames = []; let last = -1, stopped = false, lastProgress = performance.now(), gap = 1 / 30;
     const finish = () => { if (stopped) return; stopped = true; clearInterval(dog); v.pause(); v.removeEventListener('ended', finish); resolve(frames); };
     const cb = (now, meta) => {
       if (stopped) return;
       const mt = meta.mediaTime;
       if (mt > last + 1e-4) {
+        const t0 = performance.now();
         const r = detectFrame(lm, v, nextTs(last < 0 ? 0.033 : mt - last));
+        const det = (performance.now() - t0) / 1000;
+        if (last >= 0 && mt - last > 1e-3) gap = Math.min(gap, mt - last);
+        // Ralentit la lecture si l'analyse d'une image prend plus de temps qu'une image de la vidéo
+        v.playbackRate = clamp(gap / (det * 1.4 + 0.005), 0.0625, CFG.analysisRate);
         frames.push({ t: mt, lm: poseFrom(r) });
         last = mt; lastProgress = performance.now(); onProg(mt / clip.duration);
       }
       if (v.ended || mt >= clip.duration - 0.03) return finish();
       v.requestVideoFrameCallback(cb);
     };
-    const dog = setInterval(() => { if (performance.now() - lastProgress > 4000) finish(); }, 500);
+    const dog = setInterval(() => { if (performance.now() - lastProgress > 8000) finish(); }, 500);
     v.addEventListener('ended', finish);
     v.currentTime = 0; v.playbackRate = CFG.analysisRate;
     v.requestVideoFrameCallback(cb);
