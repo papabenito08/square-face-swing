@@ -105,6 +105,12 @@ td.u{color:var(--user)} td.p{color:var(--pro)} td.hot{color:var(--warn)}
 .hint{color:var(--muted);font-size:.8rem;margin:8px 0 0}
 .keyset{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .keyset .btn{font-size:.82rem;padding:6px 10px;min-height:34px}
+.fixes{list-style:none;margin:0 0 8px;padding:0;display:flex;flex-direction:column;gap:6px}
+.fixes li{display:flex;align-items:center;gap:8px;font-size:.9rem}
+.fixes li b{margin-left:auto;font:500 .82rem var(--mono);font-variant-numeric:tabular-nums}
+.fixes .sw{width:10px;height:10px;border-radius:2px;flex:none}
+.fixes li.none{color:var(--muted);font-size:.85rem}
+.fixes li.ok{color:var(--pro)}
 .tips{margin:0;padding-left:18px;color:var(--muted);font-size:.85rem} .tips li{margin-bottom:4px}
 video.analyzing{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#080c0b;z-index:2}
 .anacv{position:absolute;left:0;top:0;z-index:3;pointer-events:none}
@@ -118,7 +124,7 @@ video.analyzing{position:absolute;inset:0;width:100%;height:100%;object-fit:cont
 <div class="wrap">
   <header class="bar">
     <img class="mark" src="icon-192.png" alt="" width="34" height="34">
-    <div class="brand"><h1>Square Face Swing</h1><p>Analyse sur ton téléphone, aucune vidéo envoyée · v4</p></div>
+    <div class="brand"><h1>Square Face Swing</h1><p>Analyse sur ton téléphone, aucune vidéo envoyée · v5</p></div>
     <div class="sp"></div>
     <button class="btn" id="demoBtn" type="button">Démo</button>
   </header>
@@ -178,6 +184,7 @@ video.analyzing{position:absolute;inset:0;width:100%;height:100%;object-fit:cont
           <label class="tg"><input type="checkbox" id="tGhost" checked>Vidéo fantôme</label>
           <label class="tg"><input type="checkbox" id="tSkU" checked><span class="dot" style="background:var(--user)"></span>Mon squelette</label>
           <label class="tg"><input type="checkbox" id="tSkR" checked><span class="dot" style="background:var(--pro)"></span>Squelette réf.</label>
+          <label class="tg"><input type="checkbox" id="tDiff" checked><span class="dot" style="background:#ff4d4d"></span>Écarts en rouge</label>
         </div>
       </div>
 
@@ -193,10 +200,11 @@ video.analyzing{position:absolute;inset:0;width:100%;height:100%;object-fit:cont
       <div class="card">
         <h2>Synchronisation</h2>
         <div class="seg" id="syncSeg">
-          <button type="button" data-sync="keys" aria-pressed="true">3 repères</button>
+          <button type="button" data-sync="keys" aria-pressed="true">Phases calées</button>
           <button type="button" data-sync="impact" aria-pressed="false">Impact seul</button>
-          <button type="button" data-sync="start" aria-pressed="false">Début</button>
+          <button type="button" data-sync="start" aria-pressed="false">Vitesse réelle</button>
         </div>
+        <p class="hint" style="margin:0 0 10px">« Phases calées » : les deux swings arrivent à l'adresse, au top et à l'impact en même temps, même si ton tempo est différent. « Vitesse réelle » : les deux vidéos défilent à leur vitesse d'origine.</p>
         <table>
           <thead><tr><th>Repère</th><th>Moi</th><th>Réf.</th></tr></thead>
           <tbody id="keyTable"></tbody>
@@ -219,6 +227,9 @@ video.analyzing{position:absolute;inset:0;width:100%;height:100%;object-fit:cont
       </div>
 
       <div class="card">
+        <h2>À corriger sur cette image</h2>
+        <ul class="fixes" id="fixes"></ul>
+        <p class="hint" style="margin-bottom:14px">Angle de chaque segment comparé à la référence. <span style="color:#ffa53a">Orange</span> : écart de 12 à 20°. <span style="color:#ff4d4d">Rouge</span> : plus de 20°. Les parties cachées ne sont pas jugées.</p>
         <h2>Mesures sur cette image</h2>
         <table>
           <thead><tr><th>Angle</th><th>Moi</th><th>Réf.</th><th>Écart</th></tr></thead>
@@ -271,7 +282,7 @@ function makeClip(role) {
 const S = {
   user: makeClip('user'), ref: makeClip('ref'),
   view: 'compare', tU: 0, tR: 0, playing: false, speed: 0.5,
-  opacity: 0.35, showGhost: true, showSkU: true, showSkR: true,
+  opacity: 0.35, showGhost: true, showSkU: true, showSkR: true, showDiff: true,
   align: { s: 1, dx: 0, dy: 0, mirror: false }, sync: 'keys',
   demo: false, dirty: true, last: 0, cw: 0, ch: 0, dpr: 1, busy: 0
 };
@@ -399,7 +410,7 @@ function setT(t, seek = true) {
   $('scrub').value = t;
   S.dirty = true;
 }
-function seekVideo(v, t) { if (v && Math.abs(v.currentTime - t) > 0.0005) { try { v.currentTime = t; } catch (e) {} } }
+function seekVideo(v, t) { if (v && Math.abs(v.currentTime - t) > 0.0005 && ![S.user, S.ref].some(c => c.video === v && hasShots(c))) { try { v.currentTime = t; } catch (e) {} } }
 function seekAll() {
   const ev = effView();
   if (ev === 'compare') { seekVideo(S.user.video, S.tU); if (S.ref.ready) seekVideo(S.ref.video, mapToRef(S.tU)); }
@@ -412,7 +423,7 @@ function play() {
   const m = master(); if (!m.ready) return;
   if (curT() >= m.duration - m.dt) setT(0);
   S.playing = true; S.last = performance.now();
-  if (m.video) {
+  if (m.video && !hasShots(m)) {
     m.video.playbackRate = S.speed; S.shownT = null;
     if (m.video.requestVideoFrameCallback) {
       const v = m.video, cb = (now, meta) => { if (!S.playing) return; S.shownT = meta.mediaTime; S.dirty = true; v.requestVideoFrameCallback(cb); };
@@ -443,13 +454,19 @@ function loop(now) {
   const dtw = Math.min(0.1, (now - S.last) / 1000); S.last = now;
   if (S.playing) {
     const m = master();
-    let t = (m.video && !m.video.paused) ? (S.shownT ?? m.video.currentTime) : curT() + dtw * S.speed;
-    if (t >= m.duration - 0.0005 || (m.video && m.video.ended)) { setT(m.duration, false); pause(); }
+    const own = hasShots(m) || !m.video;
+    let t = (!own && !m.video.paused) ? (S.shownT ?? m.video.currentTime) : curT() + dtw * S.speed;
+    if (t >= m.duration - 0.0005 || (!own && m.video.ended)) { setT(m.duration, false); pause(); }
     else {
       setT(t, false);
-      if (effView() === 'compare') followRef();
+      if (effView() === 'compare' && !hasShots(S.ref)) followRef();
     }
   }
+  // Prépare les images suivantes des deux vidéos
+  const ev = effView();
+  if (ev === 'compare') { prefetch(S.user, S.tU, S.playing ? 8 : 2); if (S.ref.ready) prefetch(S.ref, mapToRef(S.tU), S.playing ? 8 : 2); }
+  else if (ev === 'user') prefetch(S.user, S.tU, S.playing ? 8 : 2);
+  else if (ev === 'ref') prefetch(S.ref, S.tR, S.playing ? 8 : 2);
   if (S.dirty) { S.dirty = false; draw(); }
   requestAnimationFrame(loop);
 }
@@ -477,9 +494,40 @@ function drawBody(P, color, alpha) { // silhouette pour la démo (remplace l'ima
   ctx.beginPath(); ctx.arc(P[0][0], P[0][1], dist(P[11], P[12]) * 0.32 + lw * 0.4, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 }
-function drawSkeleton(P, color, alpha = 1) {
+// Segments comparés entre toi et la référence (gauche/droite = côté du golfeur)
+const SEGS = [
+  { a: 11, b: 13, name: 'Bras gauche' }, { a: 13, b: 15, name: 'Avant-bras gauche' },
+  { a: 12, b: 14, name: 'Bras droit' }, { a: 14, b: 16, name: 'Avant-bras droit' },
+  { a: 23, b: 25, name: 'Cuisse gauche' }, { a: 25, b: 27, name: 'Tibia gauche' },
+  { a: 24, b: 26, name: 'Cuisse droite' }, { a: 26, b: 28, name: 'Tibia droit' },
+  { a: 11, b: 12, name: 'Ligne d\'épaules' }, { a: 23, b: 24, name: 'Ligne de hanches' },
+  { a: 'hip', b: 'sh', name: 'Buste' }
+];
+const MIRROR = { 11: 12, 12: 11, 13: 14, 14: 13, 15: 16, 16: 15, 23: 24, 24: 23, 25: 26, 26: 25, 27: 28, 28: 27 };
+const LIMIT_WARN = 12, LIMIT_BAD = 20; // degrés
+function segPoint(P, k) { return k === 'hip' ? mid(P[23], P[24]) : k === 'sh' ? mid(P[11], P[12]) : P[k]; }
+function segVis(P, k) { return k === 'hip' ? Math.min(P[23][2], P[24][2]) : k === 'sh' ? Math.min(P[11][2], P[12][2]) : P[k][2]; }
+function compareSegs(Pu, Pr) {
+  const mir = S.align.mirror, out = [];
+  for (const sg of SEGS) {
+    const ra = mir && typeof sg.a === 'number' ? MIRROR[sg.a] : sg.a, rb = mir && typeof sg.b === 'number' ? MIRROR[sg.b] : sg.b;
+    if (Math.min(segVis(Pu, sg.a), segVis(Pu, sg.b), segVis(Pr, ra), segVis(Pr, rb)) < 0.5) continue; // partie cachée : pas jugée
+    const ua = segPoint(Pu, sg.a), ub = segPoint(Pu, sg.b), qa = segPoint(Pr, ra), qb = segPoint(Pr, rb);
+    let au = Math.atan2(ub[1] - ua[1], ub[0] - ua[0]), ar = Math.atan2(qb[1] - qa[1], qb[0] - qa[0]);
+    let d = deg(Math.abs(Math.atan2(Math.sin(au - ar), Math.cos(au - ar))));
+    out.push({ ...sg, d });
+  }
+  return out;
+}
+const COL_WARN = '#ffa53a', COL_BAD = '#ff4d4d';
+function drawSkeleton(P, color, alpha = 1, diffs = null) {
   const lw = Math.max(2, S.ch * 0.0055);
   ctx.save(); ctx.globalAlpha = alpha; ctx.lineCap = 'round';
+  const segCol = (a, b) => {
+    if (!diffs) return color;
+    const hit = diffs.find(x => (x.a === a && x.b === b) || (x.a === b && x.b === a));
+    return !hit ? color : hit.d >= LIMIT_BAD ? COL_BAD : hit.d >= LIMIT_WARN ? COL_WARN : color;
+  };
   for (const [a, b] of BONES) {
     const vis = Math.min(P[a][2], P[b][2]);
     if (vis < 0.15) continue;
@@ -488,9 +536,15 @@ function drawSkeleton(P, color, alpha = 1) {
     ctx.setLineDash(unsure ? [lw * 1.6, lw * 1.4] : []);
     ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = lw + 2.5;
     ctx.beginPath(); ctx.moveTo(P[a][0], P[a][1]); ctx.lineTo(P[b][0], P[b][1]); ctx.stroke();
-    ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.stroke();
+    ctx.strokeStyle = segCol(a, b); ctx.lineWidth = lw; ctx.stroke();
   }
   ctx.globalAlpha = alpha; ctx.setLineDash([]);
+  const torso = diffs && diffs.find(x => x.a === 'hip');
+  if (torso && torso.d >= LIMIT_WARN) {
+    const h = mid(P[23], P[24]), s2 = mid(P[11], P[12]);
+    ctx.strokeStyle = torso.d >= LIMIT_BAD ? COL_BAD : COL_WARN; ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.moveTo(h[0], h[1]); ctx.lineTo(s2[0], s2[1]); ctx.stroke();
+  }
   const sh = mid(P[11], P[12]);
   ctx.setLineDash([lw * 1.4, lw * 1.4]); ctx.strokeStyle = color; ctx.lineWidth = lw * 0.8;
   ctx.beginPath(); ctx.moveTo(sh[0], sh[1]); ctx.lineTo(P[0][0], P[0][1]); ctx.stroke(); ctx.setLineDash([]);
@@ -498,14 +552,51 @@ function drawSkeleton(P, color, alpha = 1) {
   for (const k of [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]) {
     if (P[k][2] < 0.5) continue;
     ctx.beginPath(); ctx.arc(P[k][0], P[k][1], lw * 1.05, 0, Math.PI * 2);
-    ctx.fillStyle = '#0d1311'; ctx.fill(); ctx.lineWidth = lw * 0.7; ctx.strokeStyle = color; ctx.stroke();
+    let jc = color;
+    if (diffs) { const worst = Math.max(0, ...diffs.filter(x => x.a === k || x.b === k).map(x => x.d)); if (worst >= LIMIT_BAD) jc = COL_BAD; else if (worst >= LIMIT_WARN) jc = COL_WARN; }
+    ctx.fillStyle = jc === color ? '#0d1311' : jc; ctx.fill(); ctx.lineWidth = lw * 0.7; ctx.strokeStyle = jc; ctx.stroke();
   }
   ctx.restore();
 }
 
-function drawClipImage(clip, rect, xf, alpha) {
+function hasShots(clip) { return clip.ready && clip.frames.length && clip.frames[0].img; }
+function nearestIndex(clip, t) {
+  const F = clip.frames, i = frameIndex(F, t), j = Math.min(i + 1, F.length - 1);
+  return Math.abs(F[j].t - t) < Math.abs(F[i].t - t) ? j : i;
+}
+// Images décodées gardées en mémoire (une quarantaine par vidéo)
+function bitmapFor(clip, i) {
+  clip.bmp = clip.bmp || new Map(); clip.pending = clip.pending || new Set();
+  const b = clip.bmp.get(i);
+  if (b) return b;
+  if (!clip.pending.has(i) && clip.frames[i] && clip.frames[i].img) {
+    clip.pending.add(i);
+    clip.frames[i].img.then(blob => blob && createImageBitmap(blob)).then(bm => {
+      clip.pending.delete(i); if (!bm) return;
+      clip.bmp.set(i, bm); S.dirty = true;
+      if (clip.bmp.size > 48) { // on libère les images les plus éloignées
+        const far = [...clip.bmp.keys()].sort((a, b) => Math.abs(b - (clip.lastIdx ?? i)) - Math.abs(a - (clip.lastIdx ?? i)));
+        for (const k of far.slice(0, clip.bmp.size - 40)) { const bm = clip.bmp.get(k); if (bm !== clip.lastBmp) bm.close?.(); clip.bmp.delete(k); }
+      }
+    }).catch(() => clip.pending.delete(i));
+  }
+  return null;
+}
+function prefetch(clip, t, ahead) {
+  if (!hasShots(clip)) return;
+  const i = nearestIndex(clip, t);
+  for (let k = 0; k <= ahead; k++) if (clip.frames[i + k]) bitmapFor(clip, i + k);
+}
+function drawClipImage(clip, rect, xf, alpha, t) {
   if (clip.synthetic) return; // la démo dessine des silhouettes
-  const v = clip.video; if (!v || v.readyState < 2) return;
+  let v = clip.video;
+  if (hasShots(clip)) {
+    const i = nearestIndex(clip, t); clip.lastIdx = i;
+    const bm = bitmapFor(clip, i);
+    if (bm) { clip.lastBmp = bm; v = bm; }
+    else if (clip.lastBmp) v = clip.lastBmp; // en attendant le décodage
+    else return;
+  } else if (!v || v.readyState < 2) return;
   ctx.save(); ctx.globalAlpha = alpha;
   if (xf) { ctx.translate(xf.cx + xf.dx, xf.cy + xf.dy); ctx.scale(xf.s * xf.m, xf.s); ctx.drawImage(v, rect.x - xf.cx, rect.y - xf.cy, rect.w, rect.h); }
   else ctx.drawImage(v, rect.x, rect.y, rect.w, rect.h);
@@ -532,7 +623,7 @@ function draw() {
     const gy = rb.y + rb.h * 0.86; ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(S.cw, gy); ctx.stroke();
     if (Pb) drawBody(Pb, '#a9b8b1', 0.55);
   }
-  drawClipImage(base, rb, null, 1);
+  drawClipImage(base, rb, null, 1, tb);
 
   let Pg = null;
   if (ghost) {
@@ -540,17 +631,26 @@ function draw() {
     const lg = poseAt(ghost, tg); Pg = lg && toCanvas(lg, rg, xf);
     if (S.showGhost) {
       if (ghost.synthetic) { if (Pg) drawBody(Pg, '#ffffff', S.opacity); }
-      else drawClipImage(ghost, rg, xf, S.opacity);
+      else drawClipImage(ghost, rg, xf, S.opacity, tg);
     }
   }
   const baseIsUser = base === S.user;
   if (Pg && S.showSkR) drawSkeleton(Pg, getComputedStyle(document.documentElement).getPropertyValue('--pro').trim() || '#4fe08f', 0.95);
-  if (Pb && (baseIsUser ? S.showSkU : S.showSkR)) drawSkeleton(Pb, baseIsUser ? '#5aa2ff' : '#4fe08f');
+  const diffs = (ev === 'compare' && Pg && Pb && S.showDiff) ? compareSegs(Pb, Pg) : null;
+  if (Pb && (baseIsUser ? S.showSkU : S.showSkR)) drawSkeleton(Pb, baseIsUser ? '#5aa2ff' : '#4fe08f', 1, diffs);
+  renderFixes(ev === 'compare' && Pg && Pb ? (diffs || compareSegs(Pb, Pg)) : null);
 
   updateReadouts(baseIsUser ? Pb : (ev === 'ref' ? null : null), ev === 'ref' ? Pb : Pg);
 }
 
 /* ===== Mesures et affichages ===== */
+function renderFixes(diffs) {
+  const box = $('fixes');
+  if (!diffs) { box.innerHTML = '<li class="none">Importe ton swing et une référence pour voir les écarts.</li>'; return; }
+  const bad = diffs.filter(x => x.d >= LIMIT_WARN).sort((a, b) => b.d - a.d).slice(0, 4);
+  box.innerHTML = bad.length ? bad.map(x => `<li><span class="sw" style="background:${x.d >= LIMIT_BAD ? COL_BAD : COL_WARN}"></span>${x.name}<b>${Math.round(x.d)}°</b></li>`).join('')
+    : '<li class="none ok">Rien à signaler sur cette image : tu es proche de la référence.</li>';
+}
 function metrics(P) {
   if (!P) return null;
   const sh = mid(P[11], P[12]), hp = mid(P[23], P[24]);
@@ -655,11 +755,14 @@ async function seekTo(v, t) { if (Math.abs(v.currentTime - t) < 0.0001 && v.read
 // On copie d'abord l'image affichée dans un canevas 2D, puis on analyse ce canevas.
 // Sur Android, passer directement la vidéo au moteur peut lui donner une image en retard.
 const work = document.createElement('canvas'), wctx = work.getContext('2d');
+let frameShot = null;
 function detectFrame(lm, v, ts) {
   const k = Math.min(1, 720 / Math.max(v.videoWidth, v.videoHeight));
   const w = Math.max(2, Math.round(v.videoWidth * k)), h = Math.max(2, Math.round(v.videoHeight * k));
   if (work.width !== w || work.height !== h) { work.width = w; work.height = h; }
   wctx.drawImage(v, 0, 0, w, h);
+  // On garde l'image analysée : à la lecture, on affiche exactement l'image du squelette.
+  frameShot = new Promise(res => work.toBlob(b => res(b), 'image/jpeg', 0.78));
   // Mode « image » : chaque image est analysée seule. Le mode « vidéo » de MediaPipe lisse
   // les mouvements d'une image à l'autre, ce qui met le squelette en retard sur un swing rapide.
   const r = lm.detect(work);
@@ -697,7 +800,7 @@ function analyzeByPlayback(v, clip, lm, onProg) {
         if (last >= 0 && mt - last > 1e-3) gap = Math.min(gap, mt - last);
         // Ralentit la lecture si l'analyse d'une image prend plus de temps qu'une image de la vidéo
         v.playbackRate = clamp(gap / (det * 1.4 + 0.005), 0.0625, CFG.analysisRate);
-        frames.push({ t: mt, lm: poseFrom(r) });
+        frames.push({ t: mt, lm: poseFrom(r), img: frameShot });
         last = mt; lastProgress = performance.now(); onProg(mt / clip.duration);
       }
       if (v.ended || mt >= clip.duration - 0.03) return finish();
@@ -725,7 +828,7 @@ async function analyzeBySeeking(v, clip, lm, onProg) {
     });
     if (frames.length && Math.abs(shown - frames[frames.length - 1].t) < 1e-4) continue;
     const r = detectFrame(lm, v, nextTs(step));
-    frames.push({ t: shown, lm: poseFrom(r) });
+    frames.push({ t: shown, lm: poseFrom(r), img: frameShot });
     if (k % 4 === 0) { onProg(k / n); await new Promise(r => setTimeout(r)); }
   }
   return frames;
@@ -889,6 +992,7 @@ $('opacity').addEventListener('input', e => { S.opacity = +e.target.value; $('op
 $('tGhost').addEventListener('change', e => { S.showGhost = e.target.checked; S.dirty = true; });
 $('tSkU').addEventListener('change', e => { S.showSkU = e.target.checked; S.dirty = true; });
 $('tSkR').addEventListener('change', e => { S.showSkR = e.target.checked; S.dirty = true; });
+$('tDiff').addEventListener('change', e => { S.showDiff = e.target.checked; S.dirty = true; });
 $('mirror').addEventListener('change', e => { S.align.mirror = e.target.checked; autoAlign(); S.dirty = true; });
 $('autoAlign').addEventListener('click', autoAlign);
 [['aS', 's'], ['aX', 'dx'], ['aY', 'dy']].forEach(([id, k]) => $(id).addEventListener('input', e => { S.align[k] = +e.target.value; syncAlignUI(); S.dirty = true; }));
